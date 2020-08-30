@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use futures::stream::BoxStream;
 use parity_multiaddr::{Multiaddr, Protocol};
 use std::net::IpAddr;
-use tokio::io::{Error, ErrorKind, Result};
+use tokio::io::{Error, ErrorKind, Result as IoResult};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::stream::StreamExt;
 
@@ -40,10 +40,10 @@ impl Transport for TcpTransport {
 
     async fn listen<'a>(
         addr: Multiaddr,
-    ) -> Result<BoxStream<'a, Result<Connection<Self::ConnInfo, Self::Channel>>>> {
+    ) -> IoResult<BoxStream<'a, IoResult<Connection<Self::ConnInfo, Self::Channel>>>> {
         let (is_valid, ip, port) = is_valid_multiaddress(addr);
         if !is_valid || ip.is_none() || port.is_none() {
-            return Err(Error::new(ErrorKind::NotFound, "invalid multiaddress - tcp multiaddresses must be of the form '/ip4/.../tcp/...' or /ip6/.../tcp/..."));
+            Err(Error::new(ErrorKind::NotFound, "invalid multiaddress - tcp multiaddresses must be of the form '/ip4/.../tcp/...' or /ip6/.../tcp/..."))
         } else {
             let listener = TcpListener::bind((ip.unwrap(), port.unwrap())).await?;
             let stream = listener.map(|res| {
@@ -58,10 +58,10 @@ impl Transport for TcpTransport {
             Ok(Box::pin(stream))
         }
     }
-    async fn dial(addr: Multiaddr) -> Result<Connection<Self::ConnInfo, Self::Channel>> {
+    async fn dial(addr: Multiaddr) -> IoResult<Connection<Self::ConnInfo, Self::Channel>> {
         let (is_valid, ip, port) = is_valid_multiaddress(addr);
         if !is_valid || ip.is_none() || port.is_none() {
-            return Err(Error::new(ErrorKind::NotFound, "invalid multiaddress - tcp multiaddresses must be of the form '/ip4/.../tcp/...' or /ip6/.../tcp/..."));
+            Err(Error::new(ErrorKind::NotFound, "invalid multiaddress - tcp multiaddresses must be of the form '/ip4/.../tcp/...' or /ip6/.../tcp/..."))
         } else {
             let channel = TcpStream::connect((ip.unwrap(), port.unwrap())).await?;
             Ok(Connection {
