@@ -1,4 +1,4 @@
-use crate::transport::{Connection, Transport};
+use crate::transport::{Conn, Transport};
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 use parity_multiaddr::{Multiaddr, Protocol};
@@ -40,15 +40,16 @@ impl Transport for TcpTransport {
 
     async fn listen<'a>(
         addr: Multiaddr,
-    ) -> IoResult<BoxStream<'a, IoResult<Connection<Self::ConnInfo, Self::Channel>>>> {
+    ) -> IoResult<BoxStream<'a, IoResult<Conn<TcpConnInfo, TcpStream>>>> {
         let (is_valid, ip, port) = is_valid_multiaddress(addr);
         if !is_valid || ip.is_none() || port.is_none() {
             Err(Error::new(ErrorKind::NotFound, "invalid multiaddress - tcp multiaddresses must be of the form '/ip4/.../tcp/...' or /ip6/.../tcp/..."))
         } else {
+            // TODO better error handling
             let listener = TcpListener::bind((ip.unwrap(), port.unwrap())).await?;
             let stream = listener.map(|res| {
                 match res {
-                    Ok(channel) => Ok(Connection {
+                    Ok(channel) => Ok(Conn {
                         info: TcpConnInfo {}, // TODO: impl a better ConnInfo
                         channel,
                     }),
@@ -58,13 +59,14 @@ impl Transport for TcpTransport {
             Ok(Box::pin(stream))
         }
     }
-    async fn dial(addr: Multiaddr) -> IoResult<Connection<Self::ConnInfo, Self::Channel>> {
+    async fn dial(addr: Multiaddr) -> IoResult<Conn<TcpConnInfo, TcpStream>> {
         let (is_valid, ip, port) = is_valid_multiaddress(addr);
         if !is_valid || ip.is_none() || port.is_none() {
             Err(Error::new(ErrorKind::NotFound, "invalid multiaddress - tcp multiaddresses must be of the form '/ip4/.../tcp/...' or /ip6/.../tcp/..."))
         } else {
-            let channel = TcpStream::connect((ip.unwrap(), port.unwrap())).await?;
-            Ok(Connection {
+            let addr_tup = (ip.unwrap(), port.unwrap());
+            let channel = TcpStream::connect(addr_tup).await?;
+            Ok(Conn {
                 info: TcpConnInfo {},
                 channel,
             })

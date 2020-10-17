@@ -1,4 +1,4 @@
-use crate::transport::{Connection, Transport};
+use crate::transport::{Conn, Transport};
 use async_trait::async_trait;
 use core::pin::Pin;
 use core::task::{Context, Poll};
@@ -70,7 +70,7 @@ impl Transport for UdpTransport {
 
     async fn listen<'a>(
         addr: Multiaddr,
-    ) -> IoResult<BoxStream<'a, IoResult<Connection<Self::ConnInfo, Self::Channel>>>> {
+    ) -> IoResult<BoxStream<'a, IoResult<Conn<Self::ConnInfo, Self::Channel>>>> {
         let (is_valid, ip, port) = is_valid_multiaddress(addr);
         if !is_valid || ip.is_none() || port.is_none() {
             Err(Error::new(ErrorKind::NotFound, "invalid multiaddress - udp multiaddresses must be of the form '/ip4/.../udp/...' or /ip6/.../udp/..."))
@@ -79,7 +79,7 @@ impl Transport for UdpTransport {
                 match res {
                     Ok(sock) => {
                         let wrapped = UdpSocketWrapper(sock);
-                        Ok(Connection {
+                        Ok(Conn {
                             channel: wrapped,
                             info: UdpConnInfo {},
                         })
@@ -91,14 +91,14 @@ impl Transport for UdpTransport {
         }
     }
 
-    async fn dial(addr: Multiaddr) -> IoResult<Connection<Self::ConnInfo, Self::Channel>> {
+    async fn dial(addr: Multiaddr) -> IoResult<Conn<Self::ConnInfo, Self::Channel>> {
         let (is_valid, ip, port) = is_valid_multiaddress(addr);
         if !is_valid || ip.is_none() || port.is_none() {
             Err(Error::new(ErrorKind::NotFound, "invalid multiaddress - udp multiaddresses must be of the form '/ip4/.../udp/...' or /ip6/.../udp/..."))
         } else {
             let sock = UdpSocket::bind((ip.unwrap(), port.unwrap())).await?;
             let wrapped = UdpSocketWrapper(sock);
-            Ok(Connection {
+            Ok(Conn {
                 channel: wrapped,
                 info: UdpConnInfo {},
             })

@@ -11,3 +11,4 @@ parity-multiaddr = "0.9"
 futures = "0.3"
 tokio = { version = "0.2", features = ["full"] }
 async-trait = "0.1"
+pin_project = "0.1"
