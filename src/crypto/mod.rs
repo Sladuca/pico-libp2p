@@ -1,6 +1,7 @@
 pub mod error;
 
 use error::{InvalidKeyError, SigError};
+use secrecy::{CloneableSecret, DebugSecret, Secret, Zeroize};
 use std::convert::TryFrom;
 
 pub enum KeyType {
@@ -16,7 +17,10 @@ pub struct Key {
 }
 
 pub struct PubKey(Key);
-pub struct SecretKey(Key);
+pub struct SecretKey(Secret<Key>);
+
+impl CloneableSecret for SecretKey {}
+impl DebugSecret for SecretKey {}
 
 pub struct Keypair {
     sk: SecretKey,
