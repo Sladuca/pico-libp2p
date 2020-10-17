@@ -1,10 +1,10 @@
 use async_trait::async_trait;
 use tokio::io::{AsyncRead, AsyncWrite, Result as IoResult};
-use crate::transport::Conn;
-use crate::upgrade::Upgrade;
-
-pub mod switch;
-
+use parity_multiaddr::Multiaddr;
+use crate::crypto::{Keypair};
+use crate::transport::{Conn, BasicConnection};
+use crate::peer::PeerID;
+use crate::stream::Stream;
 pub struct Switch<U: Upgrade> {
   upgrader: U,
 }
@@ -14,9 +14,9 @@ pub trait Upgrade {
   type Channel: AsyncRead + AsyncWrite;
   type ConnInfo;
 
-  fn upgrade(conn: Conn) -> CapableConn<Info, Channel>;
-  fn upgrade_sec(self) -> CapableConn<Info, Channel>;
-  fn uggrade_mux(self) -> CapableConn<Info, Channel>;
+  fn upgrade(conn: Conn<Self::ConnInfo, Self::Channel>) -> CapableConn<Self::ConnInfo, Self::Channel>;
+  fn upgrade_sec(self) -> CapableConn<Self::ConnInfo, Self::Channel>;
+  fn uggrade_mux(self) -> CapableConn<Self::ConnInfo, Self::Channel>;
 }
  pub struct CapableConn<Info, Channel: AsyncRead + AsyncWrite> {
   conn: Conn<Info, Channel>,

@@ -4,6 +4,7 @@ use error::{InvalidKeyError, SigError};
 use secrecy::{CloneableSecret, DebugSecret, Secret, Zeroize};
 use std::convert::TryFrom;
 
+#[derive(Clone)]
 pub enum KeyType {
     RSA = 0,
     Ed25519 = 1,
@@ -11,6 +12,7 @@ pub enum KeyType {
     ECDSA = 3,
 }
 
+#[derive(Clone)]
 pub struct Key {
     key_type: KeyType,
     bytes: Vec<u8>,
@@ -19,8 +21,13 @@ pub struct Key {
 pub struct PubKey(Key);
 pub struct SecretKey(Secret<Key>);
 
-impl CloneableSecret for SecretKey {}
-impl DebugSecret for SecretKey {}
+impl Zeroize for Key {
+    fn zeroize(&mut self) {
+        self.bytes.iter_mut().for_each(|b| *b = 0)
+    }
+}
+impl CloneableSecret for Key {}
+impl DebugSecret for Key {}
 
 pub struct Keypair {
     sk: SecretKey,

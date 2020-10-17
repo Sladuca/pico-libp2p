@@ -1,5 +1,6 @@
-use core::task::Poll;
+use core::task::{Context, Poll};
 use futures::stream::BoxStream;
+use std::net::SocketAddr;
 use tokio::io::{Error, ErrorKind, Result as IoResult};
 use tokio::net::{TcpListener, TcpStream};
 
