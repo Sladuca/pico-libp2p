@@ -1,13 +1,8 @@
+use crate::transport::{BasicConnection, Transport};
 use core::task::{Context, Poll};
 use futures::stream::BoxStream;
 use std::net::SocketAddr;
-use tokio::io::{Error, ErrorKind, Result as IoResult};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::io::{AsyncRead, AsyncWrite, Error, ErrorKind, Result as IoResult};
 
-pub struct TestTcpListener(TcpListener);
-
-impl TestTcpListener {
-    pub fn poll_accept(&mut self, cx: &mut Context) -> Poll<IoResult<(TcpStream, SocketAddr)>> {
-        return self.0.poll_accept(cx);
-    }
-}
+struct TestTransport<T: Transport>(T);
+struct TestChannel<C: AsyncRead + AsyncWrite>(C);

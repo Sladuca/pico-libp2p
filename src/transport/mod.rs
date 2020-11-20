@@ -1,6 +1,7 @@
 use crate::crypto::Keypair;
 use crate::peer::PeerID;
 use crate::stream::Stream;
+use std::io::{Read, Write};
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 use parity_multiaddr::Multiaddr;
@@ -9,8 +10,8 @@ use tokio::io::{AsyncRead, AsyncWrite, Result as IoResult};
 pub mod tcp;
 pub mod udp;
 
-/// Struct wrapper for types that imlement Transport that allows connection instances to be passed around easily
-pub struct Conn<Info, Channel: AsyncRead + AsyncWrite> {
+/// Struct returned by Transports that allow connection instances to be passed around easily
+pub struct BasicConn<Info, Channel: AsyncRead + AsyncWrite> {
     info: Info,
     channel: Channel,
 }
@@ -28,6 +29,6 @@ pub trait Transport {
 
     async fn listen<'a>(
         addr: Multiaddr,
-    ) -> IoResult<BoxStream<'a, IoResult<Conn<Self::ConnInfo, Self::Channel>>>>;
-    async fn dial(addr: Multiaddr) -> IoResult<Conn<Self::ConnInfo, Self::Channel>>;
+    ) -> IoResult<BoxStream<'a, IoResult<BasicConn<Self::ConnInfo, Self::Channel>>>>;
+    async fn dial(addr: Multiaddr) -> IoResult<BasicConn<Self::ConnInfo, Self::Channel>>;
 }

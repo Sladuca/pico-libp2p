@@ -21,3 +21,14 @@ impl fmt::Display for InvalidKeyError {
         }
     }
 }
+
+#[derive(Debug, Clone)]
+pub enum RngError {}
+
+impl fmt::Display for InvalidKeyError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            _ => write!(f, "unspecified rng error"),
+        }
+    }
+}
