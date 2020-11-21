@@ -4,5 +4,5 @@ use futures::stream::BoxStream;
 use std::net::SocketAddr;
 use tokio::io::{AsyncRead, AsyncWrite, Error, ErrorKind, Result as IoResult};
 
-struct TestTransport<T: Transport>(T);
-struct TestChannel<C: AsyncRead + AsyncWrite>(C);
+// struct TestTransport<T: Transport>(T);
+// struct TestChannel<C: AsyncRead + AsyncWrite>(C);

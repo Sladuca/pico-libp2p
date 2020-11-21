@@ -1,4 +1,4 @@
-use crate::transport::{Conn, Transport};
+use crate::transport::{BasicConnection, BasicTransport};
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 use parity_multiaddr::{Multiaddr, Protocol};
@@ -9,7 +9,15 @@ use tokio::stream::StreamExt;
 
 pub struct TcpConnInfo {}
 
-pub struct TcpTransport {}
+pub struct TcpTransport {
+    n_conns: usize,
+}
+
+impl TcpTransport {
+    fn new() -> Self {
+        TcpTransport { n_conns: 0 }
+    }
+}
 
 fn is_valid_multiaddress(addr: Multiaddr) -> (bool, Option<IpAddr>, Option<u16>) {
     let mut is_valid = false;
@@ -34,13 +42,14 @@ fn is_valid_multiaddress(addr: Multiaddr) -> (bool, Option<IpAddr>, Option<u16>)
 }
 
 #[async_trait]
-impl Transport for TcpTransport {
+impl BasicTransport for TcpTransport {
     type ConnInfo = TcpConnInfo;
     type Channel = TcpStream;
 
     async fn listen<'a>(
+        &mut self,
         addr: Multiaddr,
-    ) -> IoResult<BoxStream<'a, IoResult<Conn<TcpConnInfo, TcpStream>>>> {
+    ) -> IoResult<BoxStream<'a, IoResult<BasicConnection<TcpConnInfo, TcpStream>>>> {
         let (is_valid, ip, port) = is_valid_multiaddress(addr);
         if !is_valid || ip.is_none() || port.is_none() {
             Err(Error::new(ErrorKind::NotFound, "invalid multiaddress - tcp multiaddresses must be of the form '/ip4/.../tcp/...' or /ip6/.../tcp/..."))
@@ -49,7 +58,7 @@ impl Transport for TcpTransport {
             let listener = TcpListener::bind((ip.unwrap(), port.unwrap())).await?;
             let stream = listener.map(|res| {
                 match res {
-                    Ok(channel) => Ok(Conn {
+                    Ok(channel) => Ok(BasicConnection {
                         info: TcpConnInfo {}, // TODO: impl a better ConnInfo
                         channel,
                     }),
@@ -59,14 +68,14 @@ impl Transport for TcpTransport {
             Ok(Box::pin(stream))
         }
     }
-    async fn dial(addr: Multiaddr) -> IoResult<Conn<TcpConnInfo, TcpStream>> {
+    async fn dial(&mut self, addr: Multiaddr) -> IoResult<BasicConnection<TcpConnInfo, TcpStream>> {
         let (is_valid, ip, port) = is_valid_multiaddress(addr);
         if !is_valid || ip.is_none() || port.is_none() {
             Err(Error::new(ErrorKind::NotFound, "invalid multiaddress - tcp multiaddresses must be of the form '/ip4/.../tcp/...' or /ip6/.../tcp/..."))
         } else {
             let addr_tup = (ip.unwrap(), port.unwrap());
             let channel = TcpStream::connect(addr_tup).await?;
-            Ok(Conn {
+            Ok(BasicConnection {
                 info: TcpConnInfo {},
                 channel,
             })
@@ -84,7 +93,7 @@ mod tests {
         let (tx, rx) = oneshot::channel();
         tokio::spawn(async move {
             let listen_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8080".parse().unwrap();
-            let mut inbound = TcpTransport::listen(listen_addr).await.unwrap();
+            let mut inbound = TcpTransport::new().listen(listen_addr).await.unwrap();
             let mut count = 0;
             tx.send("ready").unwrap();
             while let Some(conn_result) = inbound.next().await {
@@ -108,7 +117,7 @@ mod tests {
             assert_eq!("ready", rx.await.unwrap());
             for _ in 0..10 {
                 let dial_addr: Multiaddr = "/ip4/127.0.0.1/tcp/8080".parse().unwrap();
-                let mut conn = TcpTransport::dial(dial_addr).await.unwrap();
+                let mut conn = TcpTransport::new().dial(dial_addr).await.unwrap();
                 conn.channel.write_all(b"hello!").await.unwrap();
             }
         });

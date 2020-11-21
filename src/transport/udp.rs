@@ -1,4 +1,4 @@
-use crate::transport::{Conn, Transport};
+use crate::transport::{BasicConnection, BasicTransport};
 use async_trait::async_trait;
 use core::pin::Pin;
 use core::task::{Context, Poll};
@@ -64,13 +64,14 @@ pub struct UdpTransport {}
 pub struct UdpConnInfo {}
 
 #[async_trait]
-impl Transport for UdpTransport {
+impl BasicTransport for UdpTransport {
     type ConnInfo = UdpConnInfo;
     type Channel = UdpSocketWrapper;
 
     async fn listen<'a>(
+        &mut self,
         addr: Multiaddr,
-    ) -> IoResult<BoxStream<'a, IoResult<Conn<Self::ConnInfo, Self::Channel>>>> {
+    ) -> IoResult<BoxStream<'a, IoResult<BasicConnection<Self::ConnInfo, Self::Channel>>>> {
         let (is_valid, ip, port) = is_valid_multiaddress(addr);
         if !is_valid || ip.is_none() || port.is_none() {
             Err(Error::new(ErrorKind::NotFound, "invalid multiaddress - udp multiaddresses must be of the form '/ip4/.../udp/...' or /ip6/.../udp/..."))
@@ -79,7 +80,7 @@ impl Transport for UdpTransport {
                 match res {
                     Ok(sock) => {
                         let wrapped = UdpSocketWrapper(sock);
-                        Ok(Conn {
+                        Ok(BasicConnection {
                             channel: wrapped,
                             info: UdpConnInfo {},
                         })
@@ -91,14 +92,17 @@ impl Transport for UdpTransport {
         }
     }
 
-    async fn dial(addr: Multiaddr) -> IoResult<Conn<Self::ConnInfo, Self::Channel>> {
+    async fn dial(
+        &mut self,
+        addr: Multiaddr,
+    ) -> IoResult<BasicConnection<Self::ConnInfo, Self::Channel>> {
         let (is_valid, ip, port) = is_valid_multiaddress(addr);
         if !is_valid || ip.is_none() || port.is_none() {
             Err(Error::new(ErrorKind::NotFound, "invalid multiaddress - udp multiaddresses must be of the form '/ip4/.../udp/...' or /ip6/.../udp/..."))
         } else {
             let sock = UdpSocket::bind((ip.unwrap(), port.unwrap())).await?;
             let wrapped = UdpSocketWrapper(sock);
-            Ok(Conn {
+            Ok(BasicConnection {
                 channel: wrapped,
                 info: UdpConnInfo {},
             })
