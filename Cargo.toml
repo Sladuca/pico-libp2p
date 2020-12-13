@@ -9,9 +9,8 @@ edition = "2018"
 [dependencies]
 parity-multiaddr = "0.9"
 multihash = "*"
+crossbeam = "0.8"
+chrono = "0.4"
+bytes = "0.6"
 futures = "0.3"
-tokio = { version = "0.2", features = ["full"] }
-tokio-rustls = "0.20"
-async-trait = "0.1"
-pin-project = "0.1"
-secrecy = "0.7"
+pin-project = "1"
