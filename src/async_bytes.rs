@@ -2,9 +2,10 @@ use crate::errors::{ReadError, WriteError};
 use bytes::Bytes;
 use core::pin::Pin;
 use core::task::{Context, Poll};
+use futures::io::{AsyncBufRead, AsyncRead, AsyncWrite, Error, ErrorKind};
 
 pub trait AsyncReadBytes {
-    // returns the moment bytes are ready with an arbitirary number of bytes
+    // returns once bytes are available, returning a reference to those bytes in a Bytes struct
     fn poll_read_bytes(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -24,4 +25,8 @@ pub trait AsyncWriteBytes {
         cx: &mut Context<'_>,
         buf: Bytes,
     ) -> Poll<Result<(), WriteError>>;
+
+    fn poll_flush_bytes(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>>;
+
+    fn poll_close_bytes(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>>;
 }

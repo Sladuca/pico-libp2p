@@ -10,6 +10,15 @@ impl fmt::Display for ListenError {
 }
 
 #[derive(Debug, Clone)]
+pub struct DialError;
+
+impl fmt::Display for DialError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Failed to dial")
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct CloseError;
 
 impl fmt::Display for CloseError {

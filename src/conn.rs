@@ -4,7 +4,7 @@ use core::pin::Pin;
 use core::task::{Context, Poll};
 use futures::{
     channel::{mpsc, oneshot},
-    FutureExt,
+    FutureExt, Stream,
 };
 use parity_multiaddr::Multiaddr;
 
@@ -12,35 +12,49 @@ use crate::errors::{
     AcceptStreamError, CloseError, ListenError, OpenStreamError, ReadError, WriteError,
 };
 use crate::stream::NetStream;
-use crate::transport::{BasicConnection, FullConnection, SecureConnection};
+use crate::transport::{BasicChannel, SecureChannel};
+use crate::util::ReqRes;
 use crate::{ConnID, Direction};
 
-pub struct Conn<C: SecureConnection> {
+pub struct Conn<C: MuxChannel> {
     conn: C,
     local_addr: Multiaddr,
     remote_addr: Multiaddr,
 }
 
-// impl<C> Conn<C>
-// where
-//     C: FullConnection,
-// {
-//     fn close() -> Result<(), CloseError>;
-//     fn info<Extra>() -> ConnInfo<Extra>;
-//     fn get_stream_infos() -> NetStream;
-// }
+impl<C> Conn<C>
+where
+    C: MuxChannel + Into<Conn<C>>,
+{
+    fn close(self) -> Result<(), CloseError> {
+        BasicChannel::close(self.conn)
+    }
+}
 
-pub trait Multiplex: SecureConnection {
-    fn open_stream() -> OpenStream;
-    // fn listen_streams() -> Result<NetStreamStream, ListenError>;
-    fn accept_stream() -> AcceptStream;
+impl<C, E> ConnInfoTrait<E> for Conn<C>
+where
+    C: ConnInfoTrait<E> + MuxChannel,
+{
+    fn get_conn_info(&self) -> ConnInfo<E> {
+        self.conn.get_conn_info()
+    }
+}
+
+pub trait ConnInfoTrait<E> {
+    fn get_conn_info(&self) -> ConnInfo<E>;
 }
 
 pub struct ConnInfo<Extra> {
     id: ConnID,
     direction: Direction,
-    opened: DateTime<Local>,
+    opened_at: DateTime<Local>,
     extra_info: Extra,
+}
+
+pub trait MuxChannel: SecureChannel {
+    fn open_stream(&mut self) -> OpenStream;
+    fn listen_streams(&mut self) -> Result<ListenStream, ListenError>;
+    fn accept_stream(&mut self) -> AcceptStream;
 }
 
 pub enum ConnOp {
@@ -49,11 +63,6 @@ pub enum ConnOp {
     CloseStream,
     CloseWriteStream,
     CLoseReadStream,
-}
-
-pub enum ReqRes<Req, Res> {
-    WaitSend(mpsc::Sender<(Req, oneshot::Sender<Res>)>),
-    WaitRecv(oneshot::Receiver<Res>),
 }
 
 impl<U, T> Unpin for ReqRes<U, T>
@@ -69,7 +78,7 @@ impl OpenStream {
     fn new(
         chan: mpsc::Sender<(ConnOp, oneshot::Sender<Result<NetStream, OpenStreamError>>)>,
     ) -> Self {
-        ReqRes::WaitSend(chan)
+        ReqRes::<ConnOp, Result<NetStream, OpenStreamError>>::WaitSend(chan)
     }
 }
 
@@ -127,7 +136,7 @@ impl AcceptStream {
             oneshot::Sender<Result<NetStream, AcceptStreamError>>,
         )>,
     ) -> Self {
-        ReqRes::WaitSend(chan)
+        ReqRes::<ConnOp, Result<NetStream, AcceptStreamError>>::WaitSend(chan)
     }
 }
 
@@ -172,6 +181,73 @@ impl Future for AcceptStream {
                     Poll::Pending => Poll::Pending,
                 }
             }
+        }
+    }
+}
+
+pub enum ListenStreamState {
+    AcceptSend,
+    AcceptWait,
+}
+
+pub struct ListenStream {
+    req_chan: mpsc::Sender<(
+        ConnOp,
+        oneshot::Sender<Result<NetStream, AcceptStreamError>>,
+    )>,
+    res_chan: oneshot::Receiver<Result<NetStream, AcceptStreamError>>,
+    state: ListenStreamState,
+}
+
+impl ListenStream {
+    fn new(
+        chan: mpsc::Sender<(
+            ConnOp,
+            oneshot::Sender<Result<NetStream, AcceptStreamError>>,
+        )>,
+    ) -> Self {
+        let (_, rx) = oneshot::channel::<Result<NetStream, AcceptStreamError>>();
+        ListenStream {
+            req_chan: chan,
+            res_chan: rx,
+            state: ListenStreamState::AcceptSend,
+        }
+    }
+}
+
+impl Stream for ListenStream {
+    type Item = NetStream;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        match (&*self).state {
+            ListenStreamState::AcceptSend => {
+                match self.req_chan.poll_ready(cx) {
+                    Poll::Pending => Poll::Pending,
+                    Poll::Ready(Err(_)) => Poll::Ready(None),
+                    Poll::Ready(Ok(_)) => {
+                        let (tx, rx) = oneshot::channel::<Result<NetStream, AcceptStreamError>>();
+                        self.res_chan = rx;
+                        match self.req_chan.start_send((ConnOp::AcceptStream, tx)) {
+                            // send successful, wait for response
+                            Ok(_) => {
+                                self.state = ListenStreamState::AcceptWait;
+                                // poll again with the new state
+                                self.poll_next(cx)
+                            }
+
+                            // send unsuccessful, return error
+                            Err(_) => Poll::Ready(None),
+                        }
+                    }
+                }
+            }
+            ListenStreamState::AcceptWait => match FutureExt::poll_unpin(&mut (*self).res_chan, cx)
+            {
+                Poll::Ready(Ok(Ok(res))) => Poll::Ready(Some(res)),
+                Poll::Ready(Ok(Err(_))) => Poll::Ready(None),
+                Poll::Ready(Err(_)) => Poll::Ready(None),
+                Poll::Pending => Poll::Pending,
+            },
         }
     }
 }

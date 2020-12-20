@@ -12,5 +12,5 @@ pub struct NetStream {
 pub struct StreamInfo {
     id: String,
     direction: Direction,
-    opened: DateTime<Local>,
+    opened_at: DateTime<Local>,
 }

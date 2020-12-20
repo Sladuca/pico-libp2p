@@ -1,48 +1,79 @@
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
+use futures::Stream;
+use parity_multiaddr::Multiaddr;
 
 use crate::async_bytes::{AsyncReadBytes, AsyncWriteBytes};
-use crate::conn::Multiplex;
+use crate::conn::MuxChannel;
 use crate::crypto::{PubKey, SecretKey};
-use crate::errors::UpgradeError;
+use crate::errors::{CloseError, DialError, ListenError, UpgradeError};
 use crate::{PeerID, StreamID};
 
-pub trait Secure {
-    fn local_peer() -> PeerID;
-    fn local_sk() -> SecretKey;
-    fn remote_peer() -> PeerID;
-    fn remote_pk() -> PubKey;
+pub trait Transport {
+    type Channel: BasicChannel;
+    type Dial: Future<Output = Result<Self::Channel, DialError>>;
+    type Listen: Stream<Item = Result<Self::Channel, ListenError>>;
+
+    fn is_valid_multiaddr(addr: Multiaddr) -> bool;
+    fn dial(addr: Multiaddr) -> Self::Dial;
+    fn listen(addrs: Multiaddr) -> Self::Listen;
 }
 
-pub trait BasicConnection: AsyncReadBytes + AsyncWriteBytes {}
-
-pub trait SecureConnection: BasicConnection + Secure {
-    fn upgrade<'a, C: 'a + BasicConnection>(conn: C) -> UpgradeFut<'a, C, Self>;
+pub trait BasicChannel: AsyncReadBytes + AsyncWriteBytes {
+    fn close(self) -> Result<(), CloseError>;
 }
 
-pub trait FullConnection: SecureConnection + Multiplex {
-    fn upgrade_full<'a, C: 'a + BasicConnection>(conn: C) -> UpgradeFut<'a, C, Self>;
-    fn upgrade_secure<'a, C: 'a + SecureConnection>(conn: C) -> UpgradeFut<'a, C, Self>;
+pub trait SecureChannel: BasicChannel {
+    fn local_peer(&self) -> PeerID;
+    fn local_sk(&self) -> SecretKey;
+    fn remote_peer(&self) -> PeerID;
+    fn remote_pk(&self) -> PubKey;
 }
 
-pub trait Upgrade<Input> {
+pub trait Upgrade<I> {
     type Output;
 
     fn poll_upgrade(
-        self: &mut Self,
+        &mut self,
         cx: &mut Context<'_>,
-        conn: &mut Input,
+        conn: &mut I,
     ) -> Poll<Result<Self::Output, UpgradeError>>;
 }
 
-pub struct UpgradeFut<'a, C, U: ?Sized> {
-    upgrader: &'a mut U,
-    upgradee: &'a mut C,
+pub trait SecUpgrade<I: BasicChannel, O: SecureChannel>: Upgrade<I, Output = O> + Default {
+    fn sec_upgrade(conn: I) -> UpgradeFut<I, Self> {
+        let this: Self = Default::default();
+        UpgradeFut::new(this, conn)
+    }
 }
 
-impl<'a, C, U> UpgradeFut<'a, C, U> {
-    pub fn new(upgrader: &'a mut U, conn: &'a mut C) -> Self {
+pub trait MuxUpgrade<I: SecureChannel, O: MuxChannel>: Upgrade<I, Output = O> + Default {
+    fn mux_upgrade(conn: I) -> UpgradeFut<I, Self> {
+        let this: Self = Default::default();
+        UpgradeFut::new(this, conn)
+    }
+}
+
+pub trait FullUpgrade<I: BasicChannel, O: MuxChannel>: Upgrade<I, Output = O> + Default {
+    fn full_upgrade(conn: I) -> UpgradeFut<I, Self> {
+        let this: Self = Default::default();
+        UpgradeFut::new(this, conn)
+    }
+}
+
+pub struct UpgradeFut<C, U> {
+    upgrader: U,
+    upgradee: C,
+}
+
+impl<C, U> Unpin for UpgradeFut<C, U> {}
+
+impl<C, U> UpgradeFut<C, U>
+where
+    U: Upgrade<C>,
+{
+    pub fn new(upgrader: U, conn: C) -> Self {
         Self {
             upgrader: upgrader,
             upgradee: conn,
@@ -50,14 +81,14 @@ impl<'a, C, U> UpgradeFut<'a, C, U> {
     }
 }
 
-impl<C, T, U> Future for UpgradeFut<'_, C, U>
+impl<C, T, U> Future for UpgradeFut<C, U>
 where
-    U: Upgrade<C, Output = T> + ?Sized + Unpin,
+    U: Upgrade<C, Output = T> + Unpin,
 {
     type Output = Result<T, UpgradeError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = &mut *self;
-        Pin::new(&mut this.upgrader).poll_upgrade(cx, this.upgradee)
+        Pin::new(&mut this.upgrader).poll_upgrade(cx, &mut this.upgradee)
     }
 }
