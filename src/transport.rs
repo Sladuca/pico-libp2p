@@ -2,20 +2,24 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-use crate::async_bytes::{AsyncReadBytes, AsyncWriteBytes};
-use crate::conn::Multiplex;
+use futures::io::{AsyncRead, AsyncWrite, AsyncReadExt, AsyncWriteExt};
+use crate::conn::{Multiplex, ConnInfo};
 use crate::crypto::{PubKey, SecretKey};
-use crate::errors::UpgradeError;
+use crate::errors::{UpgradeError, CloseError};
 use crate::{PeerID, StreamID};
 
+
 pub trait Secure {
-    fn local_peer() -> PeerID;
-    fn local_sk() -> SecretKey;
-    fn remote_peer() -> PeerID;
-    fn remote_pk() -> PubKey;
+    fn local_peer(&self) -> PeerID;
+    fn local_sk(&self) -> SecretKey;
+    fn remote_peer(&self) -> PeerID;
+    fn remote_pk(&self) -> PubKey;
 }
 
-pub trait BasicConnection: AsyncReadBytes + AsyncWriteBytes {}
+pub trait BasicConnection: AsyncRead + AsyncWrite + Unpin {
+    fn close(self) -> Result<(), CloseError>;
+    fn info(&self) -> ConnInfo;
+}
 
 pub trait SecureConnection: BasicConnection + Secure {
     fn upgrade<'a, C: 'a + BasicConnection>(conn: C) -> UpgradeFut<'a, C, Self>;
